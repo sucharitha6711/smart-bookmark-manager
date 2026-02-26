@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Smart Bookmark Manager</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #f0f4ff; color: #333; }
+    header { background: #4f46e5; color: white; padding: 20px 40px; text-align: center; }
+    header h1 { font-size: 2rem; }
+    .container { max-width: 800px; margin: 30px auto; padding: 0 20px; }
+    .card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 24px; }
+    h2 { margin-bottom: 16px; color: #4f46e5; }
+    input { width: 100%; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 12px; font-size: 15px; }
+    input:focus { outline: none; border-color: #4f46e5; }
+    .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
+    .btn-primary { background: #4f46e5; color: white; }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-warning { background: #f59e0b; color: white; }
+    .btn-danger  { background: #ef4444; color: white; }
+    .bookmark-item { display: flex; justify-content: space-between; align-items: center;
+                     padding: 14px; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 10px; }
+    .bookmark-info a { color: #4f46e5; text-decoration: none; font-weight: 500; font-size: 15px; }
+    .bookmark-info a:hover { text-decoration: underline; }
+    .bookmark-info small { color: #6b7280; display: block; margin-top: 2px; font-size: 12px; }
+    .actions { display: flex; gap: 8px; }
+    #message { padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; display: none; font-weight: 500; }
+    .success { background: #d1fae5; color: #065f46; }
+    .error   { background: #fee2e2; color: #991b1b; }
+    #editModal { display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+                 background:rgba(0,0,0,0.4); justify-content:center; align-items:center; z-index:999; }
+    #editModal.show { display:flex; }
+    .modal-box { background:white; padding:30px; border-radius:14px; width:90%; max-width:460px; }
+    .modal-box h2 { margin-bottom:18px; }
+    .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:10px; }
+    .btn-secondary { background:#6b7280; color:white; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🔖 Smart Bookmark Manager</h1>
+  <p style="margin-top:6px;opacity:.85">Store, manage, and access your favourite links</p>
+</header>
+
+<div class="container">
+
+  <!-- Message -->
+  <div id="message"></div>
+
+  <!-- Add Bookmark -->
+  <div class="card">
+    <h2>➕ Add Bookmark</h2>
+    <input type="text" id="addTitle" placeholder="Title (e.g. Google)" />
+    <input type="url"  id="addUrl"   placeholder="URL (e.g. https://google.com)" />
+    <button class="btn btn-primary" onclick="addBookmark()">Add Bookmark</button>
+  </div>
+
+  <!-- All Bookmarks -->
+  <div class="card">
+    <h2>📚 All Bookmarks</h2>
+    <div id="bookmarkList"><p style="color:#9ca3af">Loading...</p></div>
+  </div>
+
+</div>
+
+<!-- Edit Modal -->
+<div id="editModal">
+  <div class="modal-box">
+    <h2>✏️ Edit Bookmark</h2>
+    <input type="hidden" id="editId" />
+    <input type="text" id="editTitle" placeholder="Title" />
+    <input type="url"  id="editUrl"   placeholder="URL" />
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary"   onclick="updateBookmark()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = '/api/bookmarks/';
+
+  function showMessage(msg, type='success') {
+    const el = document.getElementById('message');
+    el.textContent = msg;
+    el.className = type;
+    el.style.display = 'block';
+    setTimeout(() => el.style.display = 'none', 3000);
+  }
+
+  // ── FETCH ALL ──────────────────────────────────────────
+  async function fetchBookmarks() {
+    const res  = await fetch(API);
+    const data = await res.json();
+    const list = document.getElementById('bookmarkList');
+    if (!data.length) { list.innerHTML = '<p style="color:#9ca3af">No bookmarks yet. Add one above!</p>'; return; }
+    list.innerHTML = data.map(b => `
+      <div class="bookmark-item">
+        <div class="bookmark-info">
+          <a href="${b.url}" target="_blank">${b.title}</a>
+          <small>${b.url}</small>
+        </div>
+        <div class="actions">
+          <button class="btn btn-warning" onclick="openEdit(${b.id},'${escHtml(b.title)}','${escHtml(b.url)}')">Edit</button>
+          <button class="btn btn-danger"  onclick="deleteBookmark(${b.id})">Delete</button>
+        </div>
+      </div>`).join('');
+  }
+
+  // ── ADD ────────────────────────────────────────────────
+  async function addBookmark() {
+    const title = document.getElementById('addTitle').value.trim();
+    const url   = document.getElementById('addUrl').value.trim();
+    if (!title || !url) { showMessage('Title and URL are required.','error'); return; }
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({title, url})
+    });
+    if (res.ok) {
+      document.getElementById('addTitle').value = '';
+      document.getElementById('addUrl').value   = '';
+      showMessage('Bookmark added!');
+      fetchBookmarks();
+    } else {
+      const err = await res.json();
+      showMessage(JSON.stringify(err), 'error');
+    }
+  }
+
+  // ── EDIT MODAL ─────────────────────────────────────────
+  function openEdit(id, title, url) {
+    document.getElementById('editId').value    = id;
+    document.getElementById('editTitle').value = title;
+    document.getElementById('editUrl').value   = url;
+    document.getElementById('editModal').classList.add('show');
+  }
+  function closeModal() {
+    document.getElementById('editModal').classList.remove('show');
+  }
+
+  // ── UPDATE ─────────────────────────────────────────────
+  async function updateBookmark() {
+    const id    = document.getElementById('editId').value;
+    const title = document.getElementById('editTitle').value.trim();
+    const url   = document.getElementById('editUrl').value.trim();
+    if (!title || !url) { showMessage('Title and URL are required.','error'); return; }
+    const res = await fetch(`${API}${id}/`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({title, url})
+    });
+    if (res.ok) { closeModal(); showMessage('Bookmark updated!'); fetchBookmarks(); }
+    else        { showMessage('Update failed.','error'); }
+  }
+
+  // ── DELETE ─────────────────────────────────────────────
+  async function deleteBookmark(id) {
+    if (!confirm('Delete this bookmark?')) return;
+    const res = await fetch(`${API}${id}/`, { method: 'DELETE' });
+    if (res.status === 204) { showMessage('Bookmark deleted!'); fetchBookmarks(); }
+    else                    { showMessage('Delete failed.','error'); }
+  }
+
+  function escHtml(str) { return str.replace(/'/g, "\\'"); }
+
+  fetchBookmarks();
+</script>
+</body>
+</html>
