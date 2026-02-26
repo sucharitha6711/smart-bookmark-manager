@@ -256,13 +256,6 @@ git push origin main
 
 <img width="1919" height="1006" alt="image" src="https://github.com/user-attachments/assets/216f3084-0450-424e-b438-01ef60a17527" />
 
-.
-
----
-
-## 📄 License
-
-This project is open source and available under the [MIT License](LICENSE).
 
 ---
 
